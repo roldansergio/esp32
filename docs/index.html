@@ -1,15 +1,224 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Mi Proyecto ESP32</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Panel Web → ESP32 (MQTT)</title>
   <style>
-    body { font-family: Arial; background: #fafafa; padding: 30px; }
-    h1 { color: #0066cc; }
+    :root{--bg:#0b1020;--card:#121a33;--text:#eaf0ff;--muted:#a8b3d6;--accent:#4da3ff;--ok:#20c997;--bad:#ff5c7a;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(1200px 800px at 20% 10%,#1a2a6c33,transparent),radial-gradient(900px 700px at 80% 20%,#4da3ff22,transparent),var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:24px}
+    .wrap{width:100%;max-width:920px}
+    .card{background:linear-gradient(180deg,#121a33,#0f1630);border:1px solid #22305a;border-radius:16px;padding:22px;box-shadow:0 18px 60px #00000055}
+    h1{margin:0 0 8px;font-size:clamp(22px,3vw,34px)}
+    .subtitle{margin:0 0 18px;color:var(--muted);line-height:1.45}
+    label{display:block;font-weight:650;margin:0 0 6px}
+    input,textarea{width:100%;background:#0c1230;color:var(--text);border:1px solid #22305a;border-radius:12px;padding:12px;outline:none;font-size:15px}
+    input:focus,textarea:focus{border-color:#3b7dff;box-shadow:0 0 0 3px #3b7dff22}
+    textarea{min-height:120px;resize:vertical}
+    .grid{display:grid;gap:12px}
+    @media(min-width:860px){.grid{grid-template-columns:1fr 1fr 1fr}}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    button{border:0;background:linear-gradient(180deg,var(--accent),#2b7dff);color:#051024;font-weight:850;padding:12px 16px;border-radius:12px;cursor:pointer;font-size:15px}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .ghost{background:transparent;color:var(--text);border:1px solid #22305a;font-weight:750}
+    .status{margin-top:14px;padding:12px;border-radius:12px;border:1px dashed #2b3a6a;color:var(--muted);line-height:1.4;white-space:pre-wrap}
+    .ok{color:var(--ok);border-color:#20c99766}
+    .bad{color:var(--bad);border-color:#ff5c7a66}
+    .hint{margin-top:10px;font-size:13px;color:var(--muted)}
+    code{background:#0a1028;padding:2px 6px;border-radius:8px;border:1px solid #22305a}
   </style>
 </head>
 <body>
-  <h1>Proyecto ESP32</h1>
-  <p>Bienvenido a mi página del ESP32. Esta es mi nueva placa, porque la anterior se quemó 😅.</p>
+  <div class="wrap">
+    <div class="card">
+      <h1>Panel Web → ESP32 (Display) vía MQTT</h1>
+      <p class="subtitle">
+        Esta página está conectada a un <b>ESP32</b> que tiene un <b>display</b>.
+        El mensaje que escribas se envía por <b>MQTT</b> y el ESP32 lo muestra en pantalla.
+        (Funciona desde cualquier red si el broker MQTT está en Internet).
+      </p>
+
+      <div class="grid">
+        <div>
+          <label for="broker">Broker (WSS)</label>
+          <input id="broker" placeholder="Ej: wss://broker.emqx.io:8084/mqtt" />
+          <div class="hint">Para navegador: usá <code>wss://</code> (WebSocket seguro). :contentReference[oaicite:1]{index=1}</div>
+        </div>
+        <div>
+          <label for="user">Usuario (opcional)</label>
+          <input id="user" placeholder="(vacío si es broker público)" />
+        </div>
+        <div>
+          <label for="pass">Contraseña (opcional)</label>
+          <input id="pass" type="password" placeholder="(vacío si es broker público)" />
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label for="topic">Tópico</label>
+        <input id="topic" placeholder="ej: esp32/miDisplay/texto" />
+        <div class="hint">Tip: usá un tópico “largo” y único para que nadie te lo pise (si usás broker público).</div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label for="text">Mensaje para enviar</label>
+        <textarea id="text" placeholder="Escribí el mensaje que querés ver en el display..."></textarea>
+      </div>
+
+      <div class="actions">
+        <button id="connectBtn">Conectar</button>
+        <button id="disconnectBtn" class="ghost" disabled>Desconectar</button>
+        <button id="sendBtn" disabled>Enviar al ESP32</button>
+        <button id="exampleBtn" class="ghost" type="button">Ejemplo</button>
+      </div>
+
+      <div id="status" class="status">Listo. Completá broker + tópico y tocá “Conectar”.</div>
+
+      <div class="hint">
+        Prueba rápida recomendada:
+        <code>wss://broker.emqx.io:8084/mqtt</code> (WebSocket seguro) :contentReference[oaicite:2]{index=2}
+      </div>
+    </div>
+  </div>
+
+  <!-- MQTT.js (browser) -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const brokerEl = $("broker");
+    const userEl   = $("user");
+    const passEl   = $("pass");
+    const topicEl  = $("topic");
+    const textEl   = $("text");
+
+    const statusBox = $("status");
+    const connectBtn = $("connectBtn");
+    const disconnectBtn = $("disconnectBtn");
+    const sendBtn = $("sendBtn");
+
+    let client = null;
+
+    function setStatus(msg, type="info"){
+      statusBox.classList.remove("ok","bad");
+      if(type==="ok") statusBox.classList.add("ok");
+      if(type==="bad") statusBox.classList.add("bad");
+      statusBox.textContent = msg;
+    }
+
+    function save(){
+      localStorage.setItem("mqtt_broker", brokerEl.value.trim());
+      localStorage.setItem("mqtt_user", userEl.value.trim());
+      localStorage.setItem("mqtt_pass", passEl.value);
+      localStorage.setItem("mqtt_topic", topicEl.value.trim());
+    }
+
+    function load(){
+      brokerEl.value = localStorage.getItem("mqtt_broker") || "wss://broker.emqx.io:8084/mqtt";
+      userEl.value   = localStorage.getItem("mqtt_user") || "";
+      passEl.value   = localStorage.getItem("mqtt_pass") || "";
+      let t = localStorage.getItem("mqtt_topic");
+      if(!t){
+        // tópico único “semi-random” para no chocar con otros
+        t = "esp32/roldansergio/display/" + Math.random().toString(16).slice(2);
+      }
+      topicEl.value = t;
+    }
+
+    function setUiConnected(yes){
+      connectBtn.disabled = yes;
+      disconnectBtn.disabled = !yes;
+      sendBtn.disabled = !yes;
+    }
+
+    function connect(){
+      const broker = brokerEl.value.trim();
+      const topic  = topicEl.value.trim();
+      const user   = userEl.value.trim();
+      const pass   = passEl.value;
+
+      if(!broker || !topic){
+        setStatus("⚠️ Completá Broker (WSS) y Tópico.", "bad");
+        return;
+      }
+
+      save();
+
+      const clientId = "web_" + Math.random().toString(16).slice(2);
+      setStatus("Conectando a MQTT…");
+
+      client = mqtt.connect(broker, {
+        clientId,
+        username: user || undefined,
+        password: pass || undefined,
+        clean: true,
+        reconnectPeriod: 1500,
+        connectTimeout: 6000
+      });
+
+      client.on("connect", () => {
+        setUiConnected(true);
+        setStatus("✅ Conectado.\nAhora podés enviar mensajes al tópico:\n" + topic, "ok");
+      });
+
+      client.on("reconnect", () => setStatus("🔄 Reintentando conexión…"));
+
+      client.on("error", (err) => {
+        setUiConnected(false);
+        setStatus("❌ Error MQTT:\n" + err, "bad");
+      });
+
+      client.on("close", () => {
+        setUiConnected(false);
+        setStatus("Desconectado.");
+      });
+    }
+
+    function disconnect(){
+      if(client){
+        client.end(true);
+        client = null;
+      }
+      setUiConnected(false);
+      setStatus("Desconectado.");
+    }
+
+    function send(){
+      const topic = topicEl.value.trim();
+      const text  = textEl.value.trim();
+      if(!client || !client.connected){
+        setStatus("⚠️ Primero conectate.", "bad");
+        return;
+      }
+      if(!text){
+        setStatus("⚠️ Escribí un mensaje.", "bad");
+        return;
+      }
+
+      const payload = JSON.stringify({
+        text,
+        ts: Date.now()
+      });
+
+      client.publish(topic, payload, { qos: 0, retain: false }, (err) => {
+        if(err) setStatus("❌ No se pudo publicar:\n" + err, "bad");
+        else setStatus("✅ Enviado por MQTT.\nTópico: " + topic + "\nMensaje: " + text, "ok");
+      });
+    }
+
+    $("connectBtn").addEventListener("click", connect);
+    $("disconnectBtn").addEventListener("click", disconnect);
+    $("sendBtn").addEventListener("click", send);
+
+    $("exampleBtn").addEventListener("click", () => {
+      textEl.value = "Hola! Esto viene desde GitHub Pages 👋";
+      setStatus("Ejemplo cargado. Tocá “Enviar al ESP32”.");
+    });
+
+    load();
+    setUiConnected(false);
+  </script>
 </body>
 </html>
