@@ -36,14 +36,13 @@
       <p class="subtitle">
         Esta página está conectada a un <b>ESP32</b> que tiene un <b>display</b>.
         El mensaje que escribas se envía por <b>MQTT</b> y el ESP32 lo muestra en pantalla.
-        (Funciona desde cualquier red si el broker MQTT está en Internet).
       </p>
 
       <div class="grid">
         <div>
           <label for="broker">Broker (WSS)</label>
           <input id="broker" placeholder="Ej: wss://broker.emqx.io:8084/mqtt" />
-          <div class="hint">Para navegador: usá <code>wss://</code> (WebSocket seguro). :contentReference[oaicite:1]{index=1}</div>
+          <div class="hint">Para navegador usá <code>wss://</code> (WebSocket seguro).</div>
         </div>
         <div>
           <label for="user">Usuario (opcional)</label>
@@ -57,8 +56,8 @@
 
       <div style="margin-top:12px;">
         <label for="topic">Tópico</label>
-        <input id="topic" placeholder="ej: esp32/miDisplay/texto" />
-        <div class="hint">Tip: usá un tópico “largo” y único para que nadie te lo pise (si usás broker público).</div>
+        <input id="topic" placeholder="ej: esp32/roldansergio/display/..." />
+        <div class="hint">Usá el mismo tópico que pusiste en el ESP32.</div>
       </div>
 
       <div style="margin-top:12px;">
@@ -67,17 +66,16 @@
       </div>
 
       <div class="actions">
-        <button id="connectBtn">Conectar</button>
-        <button id="disconnectBtn" class="ghost" disabled>Desconectar</button>
-        <button id="sendBtn" disabled>Enviar al ESP32</button>
+        <button id="connectBtn" type="button">Conectar</button>
+        <button id="disconnectBtn" class="ghost" type="button" disabled>Desconectar</button>
+        <button id="sendBtn" type="button" disabled>Enviar al ESP32</button>
         <button id="exampleBtn" class="ghost" type="button">Ejemplo</button>
       </div>
 
-      <div id="status" class="status">Listo. Completá broker + tópico y tocá “Conectar”.</div>
+      <div id="status" class="status">Cargando librería MQTT…</div>
 
       <div class="hint">
-        Prueba rápida recomendada:
-        <code>wss://broker.emqx.io:8084/mqtt</code> (WebSocket seguro) :contentReference[oaicite:2]{index=2}
+        Prueba rápida: <code>wss://broker.emqx.io:8084/mqtt</code> — y tópico igual al del ESP32.
       </div>
     </div>
   </div>
@@ -86,6 +84,13 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <script>
+    // Capturamos errores JS para mostrarlos en pantalla
+    window.addEventListener("error", (e) => {
+      const box = document.getElementById("status");
+      box.classList.add("bad");
+      box.textContent = "❌ Error en la página:\n" + (e.message || e.error || e);
+    });
+
     const $ = (id) => document.getElementById(id);
 
     const brokerEl = $("broker");
@@ -119,12 +124,8 @@
       brokerEl.value = localStorage.getItem("mqtt_broker") || "wss://broker.emqx.io:8084/mqtt";
       userEl.value   = localStorage.getItem("mqtt_user") || "";
       passEl.value   = localStorage.getItem("mqtt_pass") || "";
-      let t = localStorage.getItem("mqtt_topic");
-      if(!t){
-        // tópico único “semi-random” para no chocar con otros
-        t = "esp32/roldansergio/display/" + Math.random().toString(16).slice(2);
-      }
-      topicEl.value = t;
+      topicEl.value  = localStorage.getItem("mqtt_topic") || "esp32/roldansergio/display/75169856249c6";
+      setStatus("Listo. Tocá “Conectar”.");
     }
 
     function setUiConnected(yes){
@@ -134,6 +135,11 @@
     }
 
     function connect(){
+      if (typeof mqtt === "undefined") {
+        setStatus("❌ No cargó mqtt.min.js (bloqueado o sin internet). Probá desde GitHub Pages real, no htmlpreview.", "bad");
+        return;
+      }
+
       const broker = brokerEl.value.trim();
       const topic  = topicEl.value.trim();
       const user   = userEl.value.trim();
@@ -155,12 +161,12 @@
         password: pass || undefined,
         clean: true,
         reconnectPeriod: 1500,
-        connectTimeout: 6000
+        connectTimeout: 8000,
       });
 
       client.on("connect", () => {
         setUiConnected(true);
-        setStatus("✅ Conectado.\nAhora podés enviar mensajes al tópico:\n" + topic, "ok");
+        setStatus("✅ Conectado.\nTópico destino:\n" + topic, "ok");
       });
 
       client.on("reconnect", () => setStatus("🔄 Reintentando conexión…"));
@@ -188,6 +194,7 @@
     function send(){
       const topic = topicEl.value.trim();
       const text  = textEl.value.trim();
+
       if(!client || !client.connected){
         setStatus("⚠️ Primero conectate.", "bad");
         return;
@@ -197,20 +204,17 @@
         return;
       }
 
-      const payload = JSON.stringify({
-        text,
-        ts: Date.now()
-      });
+      const payload = JSON.stringify({ text, ts: Date.now() });
 
       client.publish(topic, payload, { qos: 0, retain: false }, (err) => {
         if(err) setStatus("❌ No se pudo publicar:\n" + err, "bad");
-        else setStatus("✅ Enviado por MQTT.\nTópico: " + topic + "\nMensaje: " + text, "ok");
+        else setStatus("✅ Enviado.\nMensaje: " + text, "ok");
       });
     }
 
-    $("connectBtn").addEventListener("click", connect);
-    $("disconnectBtn").addEventListener("click", disconnect);
-    $("sendBtn").addEventListener("click", send);
+    connectBtn.addEventListener("click", connect);
+    disconnectBtn.addEventListener("click", disconnect);
+    sendBtn.addEventListener("click", send);
 
     $("exampleBtn").addEventListener("click", () => {
       textEl.value = "Hola! Esto viene desde GitHub Pages 👋";
