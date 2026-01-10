@@ -15,7 +15,7 @@
     label{display:block;font-weight:650;margin:0 0 6px}
     input,textarea{width:100%;background:#0c1230;color:var(--text);border:1px solid #22305a;border-radius:12px;padding:12px;outline:none;font-size:15px}
     input:focus,textarea:focus{border-color:#3b7dff;box-shadow:0 0 0 3px #3b7dff22}
-    textarea{min-height:120px;resize:vertical}
+    textarea{min-height:110px;resize:vertical}
     .grid{display:grid;gap:12px}
     @media(min-width:860px){.grid{grid-template-columns:1fr 1fr 1fr}}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -27,22 +27,26 @@
     .bad{color:var(--bad);border-color:#ff5c7a66}
     .hint{margin-top:10px;font-size:13px;color:var(--muted)}
     code{background:#0a1028;padding:2px 6px;border-radius:8px;border:1px solid #22305a}
+    .sensor{display:grid;gap:8px;margin-top:14px;padding:14px;border-radius:14px;border:1px solid #22305a;background:#0c1230}
+    .kv{display:flex;justify-content:space-between;gap:10px}
+    .big{font-size:18px;font-weight:900}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Panel Web → ESP32 (Display) vía MQTT</h1>
+      <h1>Panel Web → ESP32 (Display + Sensor) vía MQTT</h1>
       <p class="subtitle">
-        Esta página está conectada a un <b>ESP32</b> con <b>display I2C 16x2</b>.
-        El mensaje que escribas se envía por <b>MQTT</b> y el ESP32 lo muestra en pantalla.
+        Esta página se conecta al broker MQTT por <b>WSS</b>.
+        <br>• Publica texto al display del ESP32
+        <br>• Se suscribe y muestra <b>temperatura/humedad</b> que publica el ESP32
       </p>
 
       <div class="grid">
         <div>
           <label for="broker">Broker (WSS)</label>
           <input id="broker" placeholder="Ej: wss://broker.emqx.io:8084/mqtt" />
-          <div class="hint">Para navegador: usá <code>wss://</code>.</div>
+          <div class="hint">Para GitHub Pages (HTTPS): usá <code>wss://</code>.</div>
         </div>
         <div>
           <label for="user">Usuario (opcional)</label>
@@ -55,13 +59,7 @@
       </div>
 
       <div style="margin-top:12px;">
-        <label for="topic">Tópico</label>
-        <input id="topic" />
-        <div class="hint">Debe coincidir con el tópico del ESP32.</div>
-      </div>
-
-      <div style="margin-top:12px;">
-        <label for="text">Mensaje para enviar</label>
+        <label for="text">Mensaje para enviar al Display</label>
         <textarea id="text" placeholder="Escribí el mensaje que querés ver en el display..."></textarea>
       </div>
 
@@ -73,11 +71,20 @@
         <button id="exampleBtn" class="ghost" type="button">Ejemplo</button>
       </div>
 
+      <div class="sensor">
+        <div class="big">Sensor (desde ESP32)</div>
+        <div class="kv"><span>Temperatura</span><b><span id="t">--.-</span> °C</b></div>
+        <div class="kv"><span>Humedad</span><b><span id="h">--</span> %</b></div>
+        <div class="kv"><span>Estado</span><b><span id="sok">---</span></b></div>
+        <div class="hint">Se actualiza cuando el ESP32 publica al tópico del sensor.</div>
+      </div>
+
       <div id="status" class="status">Cargando…</div>
 
       <div class="hint">
-        Broker recomendado: <code>wss://broker.emqx.io:8084/mqtt</code>
-        • Tópico fijo: <code>esp32/roldansergio/display/75169856249c6</code>
+        Broker recomendado: <code>wss://broker.emqx.io:8084/mqtt</code><br>
+        Display tópico: <code>esp32/roldansergio/display/75169856249c6</code><br>
+        Sensor tópico: <code>esp32/roldansergio/sensor/75169856249c6</code>
       </div>
     </div>
   </div>
@@ -85,21 +92,14 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <script>
-    const TOPIC_FIJO = "esp32/roldansergio/display/75169856249c6";
-
-    // Mostrar errores JS en pantalla
-    window.addEventListener("error", (e) => {
-      const box = document.getElementById("status");
-      box.classList.add("bad");
-      box.textContent = "❌ Error en la página:\n" + (e.message || e.error || e);
-    });
+    const TOPIC_DISPLAY = "esp32/roldansergio/display/75169856249c6";
+    const TOPIC_SENSOR  = "esp32/roldansergio/sensor/75169856249c6";
 
     const $ = (id) => document.getElementById(id);
 
     const brokerEl = $("broker");
     const userEl   = $("user");
     const passEl   = $("pass");
-    const topicEl  = $("topic");
     const textEl   = $("text");
 
     const statusBox = $("status");
@@ -107,6 +107,10 @@
     const disconnectBtn = $("disconnectBtn");
     const sendBtn = $("sendBtn");
     const pingBtn = $("pingBtn");
+
+    const tEl = $("t");
+    const hEl = $("h");
+    const sokEl = $("sok");
 
     let client = null;
 
@@ -128,8 +132,6 @@
       brokerEl.value = localStorage.getItem("mqtt_broker") || "wss://broker.emqx.io:8084/mqtt";
       userEl.value   = localStorage.getItem("mqtt_user") || "";
       passEl.value   = localStorage.getItem("mqtt_pass") || "";
-      topicEl.value  = TOPIC_FIJO;              // 🔒 fijo (no se cambia)
-      topicEl.readOnly = true;                  // 🔒 bloqueado
       setStatus("Listo. Tocá “Conectar”.");
       setUiConnected(false);
     }
@@ -171,7 +173,8 @@
 
       client.on("connect", () => {
         setUiConnected(true);
-        setStatus("✅ Conectado.\nListo para enviar al tópico:\n" + TOPIC_FIJO, "ok");
+        setStatus("✅ Conectado.\n• Publicás a: " + TOPIC_DISPLAY + "\n• Suscripto a: " + TOPIC_SENSOR, "ok");
+        client.subscribe(TOPIC_SENSOR, { qos: 0 });
       });
 
       client.on("reconnect", () => setStatus("🔄 Reintentando conexión…"));
@@ -184,6 +187,20 @@
       client.on("close", () => {
         setUiConnected(false);
         setStatus("Desconectado.");
+      });
+
+      client.on("message", (topic, payload) => {
+        if (topic !== TOPIC_SENSOR) return;
+
+        try {
+          const txt = payload.toString();
+          const j = JSON.parse(txt);
+          tEl.textContent = Number(j.temp).toFixed(1);
+          hEl.textContent = Math.round(Number(j.hum));
+          sokEl.textContent = j.ok ? "OK" : "ERROR";
+        } catch (e) {
+          sokEl.textContent = "JSON inválido";
+        }
       });
     }
 
@@ -203,11 +220,9 @@
       }
 
       const payload = JSON.stringify({ text, ts: Date.now() });
-
-      // ✅ retain: true -> si el ESP32 se reconecta, recibe el último mensaje
-      client.publish(TOPIC_FIJO, payload, { qos: 0, retain: true }, (err) => {
+      client.publish(TOPIC_DISPLAY, payload, { qos: 0, retain: true }, (err) => {
         if(err) setStatus("❌ No se pudo publicar:\n" + err, "bad");
-        else setStatus("✅ Enviado.\nTópico: " + TOPIC_FIJO + "\nMensaje: " + text, "ok");
+        else setStatus("✅ Enviado.\nTópico: " + TOPIC_DISPLAY + "\nMensaje: " + text, "ok");
       });
     }
 
