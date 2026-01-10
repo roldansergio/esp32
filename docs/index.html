@@ -3,97 +3,83 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Panel Web → ESP32 (MQTT)</title>
+  <title>ESP32 Panel (MQTT)</title>
   <style>
     :root{--bg:#0b1020;--card:#121a33;--text:#eaf0ff;--muted:#a8b3d6;--accent:#4da3ff;--ok:#20c997;--bad:#ff5c7a;}
     *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(1200px 800px at 20% 10%,#1a2a6c33,transparent),radial-gradient(900px 700px at 80% 20%,#4da3ff22,transparent),var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:24px}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:24px}
     .wrap{width:100%;max-width:920px}
-    .card{background:linear-gradient(180deg,#121a33,#0f1630);border:1px solid #22305a;border-radius:16px;padding:22px;box-shadow:0 18px 60px #00000055}
-    h1{margin:0 0 8px;font-size:clamp(22px,3vw,34px)}
-    .subtitle{margin:0 0 18px;color:var(--muted);line-height:1.45}
-    label{display:block;font-weight:650;margin:0 0 6px}
-    input,textarea{width:100%;background:#0c1230;color:var(--text);border:1px solid #22305a;border-radius:12px;padding:12px;outline:none;font-size:15px}
-    input:focus,textarea:focus{border-color:#3b7dff;box-shadow:0 0 0 3px #3b7dff22}
-    textarea{min-height:110px;resize:vertical}
+    .card{background:#121a33;border:1px solid #22305a;border-radius:16px;padding:18px}
     .grid{display:grid;gap:12px}
     @media(min-width:860px){.grid{grid-template-columns:1fr 1fr 1fr}}
+    label{display:block;font-weight:700;margin:0 0 6px}
+    input,textarea{width:100%;background:#0c1230;color:var(--text);border:1px solid #22305a;border-radius:12px;padding:12px;outline:none;font-size:15px}
+    textarea{min-height:110px;resize:vertical}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    button{border:0;background:linear-gradient(180deg,var(--accent),#2b7dff);color:#051024;font-weight:850;padding:12px 16px;border-radius:12px;cursor:pointer;font-size:15px}
+    button{border:0;background:var(--accent);color:#051024;font-weight:900;padding:12px 16px;border-radius:12px;cursor:pointer}
+    button.ghost{background:transparent;color:var(--text);border:1px solid #22305a}
     button:disabled{opacity:.6;cursor:not-allowed}
-    .ghost{background:transparent;color:var(--text);border:1px solid #22305a;font-weight:750}
-    .status{margin-top:14px;padding:12px;border-radius:12px;border:1px dashed #2b3a6a;color:var(--muted);line-height:1.4;white-space:pre-wrap}
+    .status{margin-top:14px;padding:12px;border-radius:12px;border:1px dashed #2b3a6a;color:var(--muted);white-space:pre-wrap}
     .ok{color:var(--ok);border-color:#20c99766}
     .bad{color:var(--bad);border-color:#ff5c7a66}
-    .hint{margin-top:10px;font-size:13px;color:var(--muted)}
+    .sensor{margin-top:14px;padding:14px;border-radius:14px;border:1px solid #22305a;background:#0c1230}
+    .row{display:flex;justify-content:space-between;gap:10px}
     code{background:#0a1028;padding:2px 6px;border-radius:8px;border:1px solid #22305a}
-    .sensor{display:grid;gap:8px;margin-top:14px;padding:14px;border-radius:14px;border:1px solid #22305a;background:#0c1230}
-    .kv{display:flex;justify-content:space-between;gap:10px}
-    .big{font-size:18px;font-weight:900}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Panel Web → ESP32 (Display + Sensor) vía MQTT</h1>
-      <p class="subtitle">
-        Esta página se conecta al broker MQTT por <b>WSS</b>.
-        <br>• Publica texto al display del ESP32
-        <br>• Se suscribe y muestra <b>temperatura/humedad</b> que publica el ESP32
-      </p>
-
+      <h2>Panel Web → ESP32 (MQTT)</h2>
       <div class="grid">
         <div>
-          <label for="broker">Broker (WSS)</label>
-          <input id="broker" placeholder="Ej: wss://broker.emqx.io:8084/mqtt" />
-          <div class="hint">Para GitHub Pages (HTTPS): usá <code>wss://</code>.</div>
+          <label>Broker (WSS)</label>
+          <input id="broker" value="wss://broker.emqx.io:8084/mqtt" />
         </div>
         <div>
-          <label for="user">Usuario (opcional)</label>
-          <input id="user" placeholder="(vacío si es broker público)" />
+          <label>Usuario (opcional)</label>
+          <input id="user" />
         </div>
         <div>
-          <label for="pass">Contraseña (opcional)</label>
-          <input id="pass" type="password" placeholder="(vacío si es broker público)" />
+          <label>Contraseña (opcional)</label>
+          <input id="pass" type="password" />
         </div>
       </div>
 
       <div style="margin-top:12px;">
-        <label for="text">Mensaje para enviar al Display</label>
-        <textarea id="text" placeholder="Escribí el mensaje que querés ver en el display..."></textarea>
+        <label>Mensaje para el display</label>
+        <textarea id="text" placeholder="Escribí el mensaje..."></textarea>
       </div>
 
       <div class="actions">
-        <button id="connectBtn" type="button">Conectar</button>
-        <button id="disconnectBtn" class="ghost" type="button" disabled>Desconectar</button>
-        <button id="sendBtn" type="button" disabled>Enviar al ESP32</button>
-        <button id="pingBtn" class="ghost" type="button" disabled>Ping</button>
-        <button id="exampleBtn" class="ghost" type="button">Ejemplo</button>
+        <button id="connectBtn">Conectar</button>
+        <button id="disconnectBtn" class="ghost" disabled>Desconectar</button>
+        <button id="sendBtn" disabled>Enviar</button>
       </div>
 
       <div class="sensor">
-        <div class="big">Sensor (desde ESP32)</div>
-        <div class="kv"><span>Temperatura</span><b><span id="t">--.-</span> °C</b></div>
-        <div class="kv"><span>Humedad</span><b><span id="h">--</span> %</b></div>
-        <div class="kv"><span>Estado</span><b><span id="sok">---</span></b></div>
-        <div class="hint">Se actualiza cuando el ESP32 publica al tópico del sensor.</div>
+        <div class="row"><span>Temperatura</span><b><span id="t">--.-</span> °C</b></div>
+        <div class="row"><span>Humedad</span><b><span id="h">--</span> %</b></div>
+        <div class="row"><span>Estado</span><b><span id="ok">---</span></b></div>
+        <div class="row"><span>Última actualización</span><b><span id="ago">---</span></b></div>
       </div>
 
-      <div id="status" class="status">Cargando…</div>
+      <div id="status" class="status">Listo. Tocá “Conectar”.</div>
 
-      <div class="hint">
-        Broker recomendado: <code>wss://broker.emqx.io:8084/mqtt</code><br>
-        Display tópico: <code>esp32/roldansergio/display/75169856249c6</code><br>
-        Sensor tópico: <code>esp32/roldansergio/sensor/75169856249c6</code>
-      </div>
+      <p style="color:var(--muted);font-size:13px;margin-top:10px;">
+        Display: <code id="tdisp"></code><br>
+        Sensor: <code id="tsens"></code>
+      </p>
     </div>
   </div>
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-
   <script>
     const TOPIC_DISPLAY = "esp32/roldansergio/display/75169856249c6";
     const TOPIC_SENSOR  = "esp32/roldansergio/sensor/75169856249c6";
+
+    document.getElementById("tdisp").textContent = TOPIC_DISPLAY;
+    document.getElementById("tsens").textContent = TOPIC_SENSOR;
 
     const $ = (id) => document.getElementById(id);
 
@@ -102,17 +88,18 @@
     const passEl   = $("pass");
     const textEl   = $("text");
 
-    const statusBox = $("status");
     const connectBtn = $("connectBtn");
     const disconnectBtn = $("disconnectBtn");
     const sendBtn = $("sendBtn");
-    const pingBtn = $("pingBtn");
 
     const tEl = $("t");
     const hEl = $("h");
-    const sokEl = $("sok");
+    const okEl = $("ok");
+    const agoEl = $("ago");
+    const statusBox = $("status");
 
     let client = null;
+    let lastTs = 0;
 
     function setStatus(msg, type="info"){
       statusBox.classList.remove("ok","bad");
@@ -121,46 +108,24 @@
       statusBox.textContent = msg;
     }
 
-    function setUiConnected(yes){
-      connectBtn.disabled = yes;
-      disconnectBtn.disabled = !yes;
-      sendBtn.disabled = !yes;
-      pingBtn.disabled = !yes;
-    }
-
-    function load(){
-      brokerEl.value = localStorage.getItem("mqtt_broker") || "wss://broker.emqx.io:8084/mqtt";
-      userEl.value   = localStorage.getItem("mqtt_user") || "";
-      passEl.value   = localStorage.getItem("mqtt_pass") || "";
-      setStatus("Listo. Tocá “Conectar”.");
-      setUiConnected(false);
-    }
-
-    function save(){
-      localStorage.setItem("mqtt_broker", brokerEl.value.trim());
-      localStorage.setItem("mqtt_user", userEl.value.trim());
-      localStorage.setItem("mqtt_pass", passEl.value);
+    function setUi(connected){
+      connectBtn.disabled = connected;
+      disconnectBtn.disabled = !connected;
+      sendBtn.disabled = !connected;
     }
 
     function connect(){
-      if (typeof mqtt === "undefined") {
-        setStatus("❌ No cargó mqtt.min.js (bloqueado o sin internet).", "bad");
-        return;
-      }
-
       const broker = brokerEl.value.trim();
-      const user   = userEl.value.trim();
-      const pass   = passEl.value;
+      const user = userEl.value.trim();
+      const pass = passEl.value;
 
       if(!broker){
-        setStatus("⚠️ Completá el Broker (WSS).", "bad");
+        setStatus("⚠️ Poné un broker WSS.", "bad");
         return;
       }
 
-      save();
-
       const clientId = "web_" + Math.random().toString(16).slice(2);
-      setStatus("Conectando a MQTT…");
+      setStatus("Conectando…");
 
       client = mqtt.connect(broker, {
         clientId,
@@ -172,34 +137,25 @@
       });
 
       client.on("connect", () => {
-        setUiConnected(true);
-        setStatus("✅ Conectado.\n• Publicás a: " + TOPIC_DISPLAY + "\n• Suscripto a: " + TOPIC_SENSOR, "ok");
+        setUi(true);
+        setStatus("✅ Conectado. Suscrito al sensor.", "ok");
         client.subscribe(TOPIC_SENSOR, { qos: 0 });
       });
 
-      client.on("reconnect", () => setStatus("🔄 Reintentando conexión…"));
-
-      client.on("error", (err) => {
-        setUiConnected(false);
-        setStatus("❌ Error MQTT:\n" + err, "bad");
-      });
-
-      client.on("close", () => {
-        setUiConnected(false);
-        setStatus("Desconectado.");
-      });
+      client.on("reconnect", () => setStatus("🔄 Reintentando…"));
+      client.on("close", () => { setUi(false); setStatus("Desconectado."); });
+      client.on("error", (e) => { setUi(false); setStatus("❌ Error:\n"+e, "bad"); });
 
       client.on("message", (topic, payload) => {
-        if (topic !== TOPIC_SENSOR) return;
-
-        try {
-          const txt = payload.toString();
-          const j = JSON.parse(txt);
+        if(topic !== TOPIC_SENSOR) return;
+        try{
+          const j = JSON.parse(payload.toString());
           tEl.textContent = Number(j.temp).toFixed(1);
           hEl.textContent = Math.round(Number(j.hum));
-          sokEl.textContent = j.ok ? "OK" : "ERROR";
-        } catch (e) {
-          sokEl.textContent = "JSON inválido";
+          okEl.textContent = j.ok ? "OK" : "ERROR";
+          lastTs = Number(j.ts) || Date.now();
+        }catch(err){
+          okEl.textContent = "JSON inválido";
         }
       });
     }
@@ -209,21 +165,8 @@
         client.end(true);
         client = null;
       }
-      setUiConnected(false);
+      setUi(false);
       setStatus("Desconectado.");
-    }
-
-    function publishText(text){
-      if(!client || !client.connected){
-        setStatus("⚠️ Primero conectate.", "bad");
-        return;
-      }
-
-      const payload = JSON.stringify({ text, ts: Date.now() });
-      client.publish(TOPIC_DISPLAY, payload, { qos: 0, retain: true }, (err) => {
-        if(err) setStatus("❌ No se pudo publicar:\n" + err, "bad");
-        else setStatus("✅ Enviado.\nTópico: " + TOPIC_DISPLAY + "\nMensaje: " + text, "ok");
-      });
     }
 
     function send(){
@@ -232,24 +175,29 @@
         setStatus("⚠️ Escribí un mensaje.", "bad");
         return;
       }
-      publishText(text);
+      if(!client || !client.connected){
+        setStatus("⚠️ Primero conectate.", "bad");
+        return;
+      }
+      const payload = JSON.stringify({ text, ts: Date.now() });
+      client.publish(TOPIC_DISPLAY, payload, { qos: 0, retain: true }, (err) => {
+        if(err) setStatus("❌ No se pudo enviar: "+err, "bad");
+        else setStatus("✅ Enviado al display.", "ok");
+      });
     }
 
-    function ping(){
-      publishText("PING " + new Date().toLocaleString());
-    }
+    // “hace cuánto” (en base a ts del ESP32)
+    setInterval(() => {
+      if(!lastTs){ agoEl.textContent = "---"; return; }
+      const s = Math.max(0, Math.round((Date.now() - lastTs)/1000));
+      agoEl.textContent = s + "s";
+    }, 1000);
 
     connectBtn.addEventListener("click", connect);
     disconnectBtn.addEventListener("click", disconnect);
     sendBtn.addEventListener("click", send);
-    pingBtn.addEventListener("click", ping);
 
-    $("exampleBtn").addEventListener("click", () => {
-      textEl.value = "Hola! Esto viene desde GitHub Pages 👋";
-      setStatus("Ejemplo cargado. Tocá “Enviar al ESP32”.");
-    });
-
-    load();
+    setUi(false);
   </script>
 </body>
 </html>
