@@ -9,28 +9,47 @@
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:24px}
     .wrap{width:100%;max-width:920px}
-    .card{background:#121a33;border:1px solid #22305a;border-radius:16px;padding:18px}
+    .card{background:#121a33;border:1px solid #22305a;border-radius:16px;padding:18px;box-shadow:0 18px 60px #00000055}
     .grid{display:grid;gap:12px}
     @media(min-width:860px){.grid{grid-template-columns:1fr 1fr 1fr}}
     label{display:block;font-weight:700;margin:0 0 6px}
     input,textarea{width:100%;background:#0c1230;color:var(--text);border:1px solid #22305a;border-radius:12px;padding:12px;outline:none;font-size:15px}
     textarea{min-height:110px;resize:vertical}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    button{border:0;background:var(--accent);color:#051024;font-weight:900;padding:12px 16px;border-radius:12px;cursor:pointer}
+    button{border:0;background:linear-gradient(180deg,var(--accent),#2b7dff);color:#051024;font-weight:900;padding:12px 16px;border-radius:12px;cursor:pointer}
     button.ghost{background:transparent;color:var(--text);border:1px solid #22305a}
     button:disabled{opacity:.6;cursor:not-allowed}
-    .status{margin-top:14px;padding:12px;border-radius:12px;border:1px dashed #2b3a6a;color:var(--muted);white-space:pre-wrap}
+
+    /* ✅ Status como card (para que quede prolijo debajo de botones) */
+    .statusCard{margin-top:12px;padding:12px;border-radius:14px;border:1px dashed #2b3a6a;color:var(--muted);white-space:pre-wrap;background:#0c1230}
     .ok{color:var(--ok);border-color:#20c99766}
     .bad{color:var(--bad);border-color:#ff5c7a66}
-    .sensor{margin-top:14px;padding:14px;border-radius:14px;border:1px solid #22305a;background:#0c1230}
-    .row{display:flex;justify-content:space-between;gap:10px}
+
+    /* ✅ Sensor card con título vistoso */
+    .sensorCard{margin-top:14px;padding:16px;border-radius:16px;border:1px solid #22305a;background:linear-gradient(180deg,#0c1230,#0a1028)}
+    .title{
+      display:flex;align-items:center;gap:10px;
+      font-weight:950;font-size:20px;margin:0 0 10px;
+    }
+    .badge{
+      font-size:12px;font-weight:900;color:#051024;
+      background:linear-gradient(180deg,var(--accent),#2b7dff);
+      padding:4px 10px;border-radius:999px;
+    }
+    .row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #22305a}
+    .row:last-child{border-bottom:0}
     code{background:#0a1028;padding:2px 6px;border-radius:8px;border:1px solid #22305a}
+    .hint{color:var(--muted);font-size:13px;margin-top:10px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h2>Panel Web → ESP32 (MQTT)</h2>
+      <h2 style="margin:0 0 6px;">Panel Web → ESP32 (MQTT)</h2>
+      <div class="hint" style="margin-bottom:12px;">
+        Enviás mensajes al display y ves el sensor en vivo desde el broker MQTT.
+      </div>
+
       <div class="grid">
         <div>
           <label>Broker (WSS)</label>
@@ -51,25 +70,34 @@
         <textarea id="text" placeholder="Escribí el mensaje..."></textarea>
       </div>
 
+      <!-- ✅ Botones -->
       <div class="actions">
         <button id="connectBtn">Conectar</button>
         <button id="disconnectBtn" class="ghost" disabled>Desconectar</button>
         <button id="sendBtn" disabled>Enviar</button>
       </div>
 
-      <div class="sensor">
+      <!-- ✅ Status debajo de los botones (como pediste) -->
+      <div id="status" class="statusCard">Listo. Tocá “Conectar”.</div>
+
+      <!-- ✅ Sensor con título vistoso -->
+      <div class="sensorCard">
+        <div class="title">
+          <span class="badge">EN VIVO</span>
+          <span>Temperatura Casa</span>
+        </div>
+
         <div class="row"><span>Temperatura</span><b><span id="t">--.-</span> °C</b></div>
         <div class="row"><span>Humedad</span><b><span id="h">--</span> %</b></div>
         <div class="row"><span>Estado</span><b><span id="ok">---</span></b></div>
         <div class="row"><span>Última actualización</span><b><span id="ago">---</span></b></div>
+
+        <div class="hint">
+          Display: <code id="tdisp"></code><br>
+          Sensor: <code id="tsens"></code>
+        </div>
       </div>
 
-      <div id="status" class="status">Listo. Tocá “Conectar”.</div>
-
-      <p style="color:var(--muted);font-size:13px;margin-top:10px;">
-        Display: <code id="tdisp"></code><br>
-        Sensor: <code id="tsens"></code>
-      </p>
     </div>
   </div>
 
@@ -138,7 +166,7 @@
 
       client.on("connect", () => {
         setUi(true);
-        setStatus("✅ Conectado. Suscrito al sensor.", "ok");
+        setStatus("✅ Conectado. Esperando datos del sensor…", "ok");
         client.subscribe(TOPIC_SENSOR, { qos: 0 });
       });
 
@@ -154,8 +182,13 @@
           hEl.textContent = Math.round(Number(j.hum));
           okEl.textContent = j.ok ? "OK" : "ERROR";
           lastTs = Number(j.ts) || Date.now();
+
+          // Si llegó bien, mantenemos el status en OK pero sin “ensuciar”
+          if(j.ok) setStatus("✅ Conectado. Sensor actualizando OK.", "ok");
+          else     setStatus("⚠️ Conectado, pero sensor reporta ERROR.", "bad");
         }catch(err){
           okEl.textContent = "JSON inválido";
+          setStatus("⚠️ Conectado, pero llegó un JSON inválido del sensor.", "bad");
         }
       });
     }
